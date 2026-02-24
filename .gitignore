@@ -1,0 +1,9 @@
+*
+
+!/.github
+!/.github/workflows
+!/.github/workflows/docker-build.yml
+!/.gitignore
+!/Dockerfile
+!/README.md
+
