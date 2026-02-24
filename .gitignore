@@ -2,7 +2,7 @@
 
 !/.github
 !/.github/workflows
-!/.github/workflows/docker-build.yml
+!/.github/workflows/*.yml
 !/.gitignore
 !/Dockerfile
 !/README.md

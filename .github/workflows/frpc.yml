@@ -1,4 +1,4 @@
-name: Upstream Tracker & Docker Build
+name: frpc Upstream Tracker & Docker Build
 
 on:
   schedule:
@@ -7,7 +7,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  IMAGE_NAME: ${{ github.repository_owner }}/frpc
   UPSTREAM_REPO: "fatedier/frp" 
 
 jobs:
