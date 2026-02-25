@@ -1,28 +1,25 @@
-name: frpc Upstream Tracker & Docker Build
+name: frp Upstream Tracker & Docker Build
 
 on:
   schedule:
     - cron: '0 10 * * *'
-  workflow_dispatch: 
+  workflow_dispatch:  # forces a rebuild
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/frpc
   UPSTREAM_REPO: "fatedier/frp" 
+  PRIMARY_PACKAGE: "frps"
 
 jobs:
-  check-and-build:
+  prepare:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-      id-token: write
-
+    outputs:
+      version: ${{ steps.upstream.outputs.version }}
+      build_needed: ${{ steps.check-image.outputs.build_needed }}
     steps:
       - name: Get upstream latest release
         id: upstream
         run: |
-          # Query the GitHub API for the latest release tag
           LATEST_TAG=$(curl -sL https://api.github.com/repos/${{ env.UPSTREAM_REPO }}/releases/latest | jq -r '.tag_name')
           
           if [ -z "$LATEST_TAG" ] || [ "$LATEST_TAG" == "null" ]; then
@@ -33,20 +30,20 @@ jobs:
           echo "Latest upstream tag: $LATEST_TAG"
           echo "version=$LATEST_TAG" >> $GITHUB_OUTPUT
 
-      - name: Log into registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Check if image already exists
+      - name: Check if build is required
         id: check-image
         env:
           DOCKER_CLI_EXPERIMENTAL: enabled
         run: |
-          # Use docker manifest to check if this specific tag already exists in your GHCR
-          if docker manifest inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.upstream.outputs.version }} > /dev/null 2>&1; then
+          # Force build if triggered manually
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "Manual trigger detected. Forcing rebuild of all packages."
+            echo "build_needed=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # If scheduled, check if the primary binary is already in the registry
+          if docker manifest inspect ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.PRIMARY_PACKAGE }}:${{ steps.upstream.outputs.version }} > /dev/null 2>&1; then
             echo "Image for version ${{ steps.upstream.outputs.version }} already exists. Skipping build."
             echo "build_needed=false" >> $GITHUB_OUTPUT
           else
@@ -54,35 +51,74 @@ jobs:
             echo "build_needed=true" >> $GITHUB_OUTPUT
           fi
 
-      - name: Checkout repository
-        if: steps.check-image.outputs.build_needed == 'true'
-        uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        if: steps.check-image.outputs.build_needed == 'true'
-        uses: docker/setup-buildx-action@v3
+  build-base:
+    needs: prepare
+    if: needs.prepare.outputs.build_needed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
 
-      - name: Extract Docker metadata
-        if: steps.check-image.outputs.build_needed == 'true'
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=raw,value=latest
-            type=raw,value=${{ steps.upstream.outputs.version }}
-
-      - name: Build and push Docker image
-        if: steps.check-image.outputs.build_needed == 'true'
+      - name: Build and cache builder stage
         uses: docker/build-push-action@v6
         with:
           context: .
+          target: build
+          push: false
+          platforms: linux/amd64,linux/arm64
+          cache-to: type=gha,mode=min
+          cache-from: type=gha
+          build-args: |
+            UPSTREAM_VERSION=${{ needs.prepare.outputs.version }}
+ 
+
+  package-binaries:
+    needs: [prepare, build-base]
+    if: needs.prepare.outputs.build_needed == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        binary: [frps, frpc]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log into registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.binary }}
+          tags: |
+            type=raw,value=latest
+            type=raw,value=${{ needs.prepare.outputs.version }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: ${{ matrix.binary }}
           push: true
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
-          # Passes the discovered version into the Dockerfile as an argument
           build-args: |
-            UPSTREAM_VERSION=${{ steps.upstream.outputs.version }}
+            UPSTREAM_VERSION=${{ needs.prepare.outputs.version }}
+
