@@ -1,13 +1,14 @@
-FROM alpine:latest AS build
+FROM --platform=$BUILDPLATFORM alpine:latest AS build
 
+ARG TARGETARCH
 ARG UPSTREAM_VERSION
-ARG ARCH=linux_amd64
 
 WORKDIR /root
 
-RUN wget https://github.com/fatedier/frp/releases/download/${UPSTREAM_VERSION}/frp_${UPSTREAM_VERSION#v}_${ARCH}.tar.gz -O frp.tar.gz
-
-RUN tar -xzvf frp.tar.gz && mv frp_${UPSTREAM_VERSION#v}_${ARCH}/frpc .
+RUN ARCH="linux_${TARGETARCH}" && \
+    wget https://github.com/fatedier/frp/releases/download/${UPSTREAM_VERSION}/frp_${UPSTREAM_VERSION#v}_${ARCH}.tar.gz -O frp.tar.gz && \
+	tar -xzvf frp.tar.gz && \
+	mv frp_${UPSTREAM_VERSION#v}_${ARCH}/frpc .
 
 FROM scratch
 
