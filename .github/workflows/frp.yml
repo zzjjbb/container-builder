@@ -51,38 +51,13 @@ jobs:
             echo "build_needed=true" >> $GITHUB_OUTPUT
           fi
 
-
-  build-base:
-    needs: prepare
-    if: needs.prepare.outputs.build_needed == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-      id-token: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-
-      - name: Build and cache builder stage
-        uses: docker/build-push-action@v6
-        with:
-          context: ./frp
-          target: build
-          push: false
-          platforms: linux/amd64,linux/arm64
-          cache-to: type=gha,mode=min
-          cache-from: type=gha
-          build-args: |
-            UPSTREAM_VERSION=${{ needs.prepare.outputs.version }}
- 
-
   package-binaries:
-    needs: [prepare, build-base]
+    needs: prepare
     if: needs.prepare.outputs.build_needed == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         binary: [frps, frpc]
     permissions:
@@ -119,6 +94,6 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
+          cache-to: type=gha,mode=max
           build-args: |
             UPSTREAM_VERSION=${{ needs.prepare.outputs.version }}
-
