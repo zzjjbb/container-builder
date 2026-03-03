@@ -51,15 +51,10 @@ jobs:
             echo "build_needed=true" >> $GITHUB_OUTPUT
           fi
 
-  package-binaries:
+  package:
     needs: prepare
     if: needs.prepare.outputs.build_needed == 'true'
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      max-parallel: 1
-      matrix:
-        binary: [frps, frpc]
     permissions:
       contents: read
       packages: write
@@ -75,25 +70,28 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract Docker metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.binary }}
-          tags: |
-            type=raw,value=latest
-            type=raw,value=${{ needs.prepare.outputs.version }}
-
-      - name: Build and push Docker image
+      - name: Build and Push frps
         uses: docker/build-push-action@v6
         with:
           context: ./frp
-          target: ${{ matrix.binary }}
+          target: frps
           push: true
           platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          tags: |
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/frps:latest
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/frps:${{ needs.prepare.outputs.version }}
+          build-args: |
+            UPSTREAM_VERSION=${{ needs.prepare.outputs.version }}
+
+      - name: Build and Push frpc
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frp
+          target: frpc
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/frpc:latest
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/frpc:${{ needs.prepare.outputs.version }}
           build-args: |
             UPSTREAM_VERSION=${{ needs.prepare.outputs.version }}
