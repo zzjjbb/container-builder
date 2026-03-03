@@ -4,6 +4,9 @@
 !/.github/workflows
 !/.github/workflows/*.yml
 !/.gitignore
-!/Dockerfile
+
+!/frp
+!/frp/Dockerfile
+
 !/README.md
 

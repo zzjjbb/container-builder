@@ -67,7 +67,7 @@ jobs:
       - name: Build and cache builder stage
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: ./frp
           target: build
           push: false
           platforms: linux/amd64,linux/arm64
@@ -112,7 +112,7 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: ./frp
           target: ${{ matrix.binary }}
           push: true
           platforms: linux/amd64,linux/arm64
